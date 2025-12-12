@@ -6,6 +6,12 @@
 #include <string.h>
 #include <rom/ets_sys.h>
 
+#define CHECK_TIMEOUT(action, msg, ...) \
+    if ((action) != ESP_OK) { \
+        ESP_LOGE(TAG, "TIMEOUT: " msg, ##__VA_ARGS__); \
+        return ESP_ERR_TIMEOUT; \
+    }
+
 static const char *TAG = "DHT11_DRIVER";
 
 typedef struct {
@@ -55,34 +61,62 @@ esp_err_t dht11_init(uint8_t pin)
 {
     // Initialize the DHT11 sensor on the specified GPIO pin
     dht11_ctx.pin = pin;
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << pin),
+        .mode = GPIO_MODE_INPUT_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+
+    esp_err_t err = gpio_config(&io_conf);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure GPIO %d: %s", pin, esp_err_to_name(err));
+        return err;
+    }
+
     dht11_ctx.initialized = true;
-    gpio_set_direction(pin, GPIO_MODE_INPUT_OUTPUT);
     ESP_LOGI(TAG, "DHT11 Sensor initialized on GPIO %d", pin);
     return ESP_OK;
 }
 
 esp_err_t dht11_read(dht11_data_t *data)
 {
-    uint8_t data_buffer[5] = {0};
-    
+    if (!dht11_ctx.initialized) {
+        ESP_LOGE(TAG, "DHT11 sensor not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     // Send start signal
     dht11_send_start_signal();
-
+    
     // Wait for sensor response
-    if (dht11_wait_for_level(0, 1000) != ESP_OK) return ESP_ERR_TIMEOUT;
-    if (dht11_wait_for_level(1, 1000) != ESP_OK) return ESP_ERR_TIMEOUT;
-    if (dht11_wait_for_level(0, 1000) != ESP_OK) return ESP_ERR_TIMEOUT;
+    // 1. Wait for sensor response (DHT pull-down 0)
+    CHECK_TIMEOUT(dht11_wait_for_level(0, 1000), "Wait response LOW");
+    
+    // 2. Wait for sensor response (DHT pull-up 1 to prepare for data transmission)
+    CHECK_TIMEOUT(dht11_wait_for_level(1, 1000), "Wait response HIGH");
+    
+    // 3. Wait for sensor to pull low to start data transmission
+    CHECK_TIMEOUT(dht11_wait_for_level(0, 1000), "Wait data transmission START LOW");
+    
+    uint8_t data_buffer[5] = {0};
 
     // Read 40 bits (5 bytes) of data
     for (int i = 0; i < 40; i++) {
-        // Wait for bit start
-        if (dht11_wait_for_level(1, 1000) != ESP_OK) return ESP_ERR_TIMEOUT;
+        // Wait for bit start (high pulse to measure length)
+        CHECK_TIMEOUT(dht11_wait_for_level(1, 1000), "Bit %d start", i);
 
         // Measure the length of the high pulse
         int64_t start_time = esp_timer_get_time();
 
         // Wait for bit end
-        if (dht11_wait_for_level(0, 1000) != ESP_OK) return ESP_ERR_TIMEOUT;
+        CHECK_TIMEOUT(dht11_wait_for_level(0, 1000), "Bit %d end", i);
 
         // Calculate pulse duration
         int64_t pulse_duration = esp_timer_get_time() - start_time;
