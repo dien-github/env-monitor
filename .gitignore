@@ -4,3 +4,8 @@ sdkconfig.old
 
 .vscode
 .devcontainer
+
+tests/
+
+
+.clangd
