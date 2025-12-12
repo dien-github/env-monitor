@@ -35,8 +35,9 @@ static esp_err_t dht11_wait_for_level(int target_level, uint32_t timeout_us)
 
 static esp_err_t dht11_send_start_signal()
 {
+    // USE OPEN-DRAIN mode to allow pulling the line low
     // Set pin to output
-    gpio_set_direction(dht11_ctx.pin, GPIO_MODE_OUTPUT);
+    // gpio_set_direction(dht11_ctx.pin, GPIO_MODE_OUTPUT);
     
     // Pull the pin low for at least 18ms
     gpio_set_level(dht11_ctx.pin, 0);
@@ -44,10 +45,11 @@ static esp_err_t dht11_send_start_signal()
 
     // Pull the pin high for 20-40us
     gpio_set_level(dht11_ctx.pin, 1);
-    ets_delay_us(40);
+    ets_delay_us(30);
 
+    // Use OPEN-DRAIN mode, so we can release the line
     // Set pin to input to read data
-    gpio_set_direction(dht11_ctx.pin, GPIO_MODE_INPUT);
+    // gpio_set_direction(dht11_ctx.pin, GPIO_MODE_INPUT);
 
     return ESP_OK;
 }
