@@ -6,6 +6,7 @@ idf_component_register(
         "service_wifi"
         "service_mqtt"
         "esp_timer"
+        "driver_relay"
     PRIV_REQUIRES
         "json"
     INCLUDE_DIRS "."

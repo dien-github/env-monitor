@@ -8,11 +8,15 @@
 #include "cJSON.h"
 
 #include "dht11_driver.h"
+#include "driver_relay.h"
 #include "service_wifi.h"
 #include "service_mqtt.h"
 
 #define CONFIG_DHT11_PIN 4
 #define CONFIG_DHT11_CONNECTION_TIMEOUT 5
+
+#define CONFIG_RELAY_PIN 16
+#define CONFIG_RELAY_TYPE RELAY_ACTIVE_HIGH
 
 #define TOPIC_SENSOR_PUB "room_01/sensors" // {"temperature": xx.x, "humidity": yy.y }
 #define TOPIC_COMMAND_SUB "room_01/commands" // {"type": "fan", "state": xx} / {"type": "humidifier", "state": "on"/"off"}
@@ -38,6 +42,32 @@ void dht11_task(void *pvParameters)
             ESP_LOGI("DHT11", "Temperature: %.2f C, Humidity: %.2f %%", data.temperature, data.humidity);
         } else {
             ESP_LOGE("DHT11", "Failed to read data from DHT11 sensor: %s", esp_err_to_name(err));
+        }
+    }
+}
+
+void relay_task(void *pvParameters)
+{
+    relay_config_t relay_cfg;
+    relay_cfg.gpio_pin = CONFIG_RELAY_PIN;
+    relay_cfg.type = CONFIG_RELAY_TYPE;
+
+    esp_err_t err = relay_init(&relay_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE("RELAY", "Failed to initialize relay: %s", esp_err_to_name(err));
+        vTaskDelete(NULL);
+    }
+
+    while (1) {
+        uint32_t notification_value = ulTaskNotifyTake(pdTrue, portMAX_DELAY);
+        ESP_LOGI("RELAY", "ulTaskNotifyTake returned: %u", notification_value);
+
+        esp_err_t ret = relay_toggle(&relay_cfg);
+        if (ret != ESP_OK) {
+            ESP_LOGE("RELAY", "Failed to toggle relay: %s", esp_err_to_name(ret));
+            continue;
+        } else {
+            ESP_LOGI("RELAY", "Relay state toggled");
         }
     }
 }
@@ -144,11 +174,16 @@ void app_main(void)
     // 3. Start MQTT Service
     mqtt_service_start(on_mqtt_data_received);
 
+    // 4. Subscribe to command topic
     vTaskDelay(pdMS_TO_TICKS(5000)); 
     mqtt_service_subscribe(TOPIC_COMMAND_SUB, 1);
     
-    // 4. Create DHT11 Task
+    // 5. Create DHT11 Task
     // xTaskCreate(dht11_task, "DHT11 TASK", 2048, NULL, 5, NULL);
+
+    // 6. Create Relay Task
+    xTaskCreate(relay_task, "RELAY TASK", 2048, NULL, 5, NULL);
+
     char data_buffer[50];
     float fake_temp = 0, fake_hum = 0;
 
