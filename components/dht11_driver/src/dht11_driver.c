@@ -6,6 +6,8 @@
 #include <string.h>
 #include <rom/ets_sys.h>
 
+static const char *TAG = "DHT11_DRIVER";
+
 typedef struct {
     uint8_t pin;
     bool initialized;
@@ -55,6 +57,7 @@ esp_err_t dht11_init(uint8_t pin)
     dht11_ctx.pin = pin;
     dht11_ctx.initialized = true;
     gpio_set_direction(pin, GPIO_MODE_INPUT_OUTPUT);
+    ESP_LOGI(TAG, "DHT11 Sensor initialized on GPIO %d", pin);
     return ESP_OK;
 }
 
