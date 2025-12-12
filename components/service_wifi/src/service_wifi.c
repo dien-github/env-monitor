@@ -42,7 +42,7 @@ void wifi_service_start(void) {
     // Create the default event loop needed by the Wi-Fi driver
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     // Create default Wi-Fi station
-    ESP_ERROR_CHECK(esp_netif_create_default_wifi_sta());
+    esp_netif_create_default_wifi_sta();
     // Initialize the Wi-Fi driver with default configurations
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
