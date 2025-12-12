@@ -38,11 +38,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 void wifi_service_start(void) {
     // 1. Wi-Fi/LwIP Init Phase
     // Initialize TCP/IP network interface
-    esp_netif_init();
+    ESP_ERROR_CHECK(esp_netif_init());
     // Create the default event loop needed by the Wi-Fi driver
-    esp_event_loop_create_default();
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
     // Create default Wi-Fi station
-    esp_netif_create_default_wifi_sta();
+    ESP_ERROR_CHECK(esp_netif_create_default_wifi_sta());
     // Initialize the Wi-Fi driver with default configurations
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -51,12 +51,12 @@ void wifi_service_start(void) {
     // Register event handler for Wi-Fi events
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                         &wifi_event_handler, NULL,
-                                        &instance_any_id);
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                        &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         &wifi_event_handler, NULL,
-                                        &instance_got_ip);
+                                        &instance_got_ip));
     // Configure Wi-Fi connection and authentication settings
     wifi_config_t wifi_config = {
         .sta = {
