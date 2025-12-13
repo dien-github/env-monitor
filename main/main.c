@@ -59,7 +59,7 @@ void relay_task(void *pvParameters)
     }
 
     while (1) {
-        uint32_t notification_value = ulTaskNotifyTake(pdTrue, portMAX_DELAY);
+        uint32_t notification_value = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         ESP_LOGI("RELAY", "ulTaskNotifyTake returned: %u", notification_value);
 
         esp_err_t ret = relay_toggle(&relay_cfg);
