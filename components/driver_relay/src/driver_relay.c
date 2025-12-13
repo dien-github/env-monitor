@@ -1,8 +1,6 @@
 #include "driver_relay.h"
 #include "driver/gpio.h"
 
-const static char *TAG = "RELAY_DRIVER";
-
 esp_err_t relay_init(relay_config_t *config)
 {
     // Configure the GPIO pin for the relay
@@ -23,7 +21,6 @@ esp_err_t relay_init(relay_config_t *config)
     // Set the initial state of the relay to OFF
     relay_set_state(config, RELAY_STATE_OFF);
 
-    ESP_LOGI(TAG, "Relay initialized on GPIO %d", config->gpio_pin);
     return ESP_OK;
 }
 
