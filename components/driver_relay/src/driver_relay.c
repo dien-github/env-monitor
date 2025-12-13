@@ -1,8 +1,25 @@
 #include "driver_relay.h"
 #include "driver/gpio.h"
+#include "esp_log.h"
+
+#define RELAY_GPIO_MAX 39  // Maximum GPIO pin number for ESP32
+
+static const char *TAG = "RELAY_DRIVER";
 
 esp_err_t relay_init(relay_config_t *config)
 {
+    // Validate input
+    if (config == NULL) {
+        ESP_LOGE(TAG, "Config pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Validate GPIO pin number
+    if (config->gpio_pin > RELAY_GPIO_MAX) {
+        ESP_LOGE(TAG, "Invalid GPIO pin: %d (max: %d)", config->gpio_pin, RELAY_GPIO_MAX);
+        return ESP_ERR_INVALID_ARG;
+    }
+
     // Configure the GPIO pin for the relay
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << config->gpio_pin),
@@ -15,42 +32,90 @@ esp_err_t relay_init(relay_config_t *config)
     // Apply the GPIO configuration
     esp_err_t ret = gpio_config(&io_conf);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure GPIO %d: %s", config->gpio_pin, esp_err_to_name(ret));
         return ret;
     }
 
     // Set the initial state of the relay to OFF
-    relay_set_state(config, RELAY_STATE_OFF);
+    ret = relay_set_state(config, RELAY_STATE_OFF);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set initial state");
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Relay initialized on GPIO %d (Type: %s)", 
+             config->gpio_pin, 
+             config->type == RELAY_ACTIVE_HIGH ? "Active-High" : "Active-Low");
 
     return ESP_OK;
 }
 
 esp_err_t relay_set_state(relay_config_t *config, relay_state_t state)
 {
-    if (config->type == RELAY_ACTIVE_HIGH) {
-        gpio_set_level(config->gpio_pin, (state == RELAY_STATE_ON) ? 1 : 0);
-    } else { // RELAY_ACTIVE_LOW
-        gpio_set_level(config->gpio_pin, (state == RELAY_STATE_ON) ? 0 : 1);
+    // Validate input
+    if (config == NULL) {
+        ESP_LOGE(TAG, "Config pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
     }
+
+    // Determine GPIO level based on relay type and desired state
+    int level;
+    if (config->type == RELAY_ACTIVE_HIGH) {
+        level = (state == RELAY_STATE_ON) ? 1 : 0;
+    } else { // RELAY_ACTIVE_LOW
+        level = (state == RELAY_STATE_ON) ? 0 : 1;
+    }
+
+    // Set GPIO level and check return value
+    esp_err_t ret = gpio_set_level(config->gpio_pin, level);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set GPIO %d level: %s", config->gpio_pin, esp_err_to_name(ret));
+        return ret;
+    }
+
     return ESP_OK;
 }
 
 esp_err_t relay_get_state(relay_config_t *config, relay_state_t *state)
 {
+    // Validate input
+    if (config == NULL || state == NULL) {
+        ESP_LOGE(TAG, "Invalid parameter (NULL pointer)");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Read GPIO level
     int level = gpio_get_level(config->gpio_pin);
+    
+    // Interpret level based on relay type
     if (config->type == RELAY_ACTIVE_HIGH) {
         *state = (level == 1) ? RELAY_STATE_ON : RELAY_STATE_OFF;
     } else { // RELAY_ACTIVE_LOW
         *state = (level == 0) ? RELAY_STATE_ON : RELAY_STATE_OFF;
     }
+    
     return ESP_OK;
 }
 
 esp_err_t relay_toggle(relay_config_t *config)
 {
-    relay_state_t current_state;
-    relay_get_state(config, &current_state);
+    // Validate input
+    if (config == NULL) {
+        ESP_LOGE(TAG, "Config pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
 
+    // Get current state
+    relay_state_t current_state;
+    esp_err_t ret = relay_get_state(config, &current_state);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get current state");
+        return ret;
+    }
+
+    // Toggle to opposite state
     relay_state_t new_state = (current_state == RELAY_STATE_ON) ? RELAY_STATE_OFF : RELAY_STATE_ON;
+    
     return relay_set_state(config, new_state);
 }
 
