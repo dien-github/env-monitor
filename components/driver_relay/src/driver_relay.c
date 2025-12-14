@@ -50,6 +50,18 @@ esp_err_t relay_init(relay_config_t *config)
     return ESP_OK;
 }
 
+esp_err_t relay_set_level(relay_config_t *config, uint32_t level) {
+    if (config == NULL) return ESP_ERR_INVALID_ARG;
+    
+    // Xử lý Active High/Low
+    uint32_t physical_level = level;
+    if (config->type == RELAY_ACTIVE_LOW) {
+        physical_level = !level;
+    }
+
+    return gpio_set_level(config->gpio_pin, physical_level);
+}
+
 esp_err_t relay_set_state(relay_config_t *config, relay_state_t state)
 {
     // Validate input

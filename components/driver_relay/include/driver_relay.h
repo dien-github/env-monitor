@@ -26,6 +26,14 @@ typedef struct {
 esp_err_t relay_init(relay_config_t *config);
 
 /**
+ * @brief Set the relay to a specific level (0 or 1).
+ * @param config Pointer to the relay configuration structure.
+ * @param level Desired level (0 or 1).
+ * @return ESP_OK on success, or an error code on failure.
+ */
+esp_err_t relay_set_level(relay_config_t *config, uint32_t level);
+
+/**
  * @brief Set the state of the relay.
  * @param config Pointer to the relay configuration structure.
  * @param state Desired state of the relay (RELAY_STATE_ON or RELAY_STATE_OFF).
