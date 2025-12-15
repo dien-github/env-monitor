@@ -7,4 +7,8 @@ MQTT -> MQTT Broker
 Status:
 - Source Code: Done - Verified - Not Clean - Too much Hardcode
 
-Relay -> GPIO 16
+Relay -> GPIO 18
+
+{"type":"humidifier","state":"on"}
+
+MOSFET -> GPIO 21
