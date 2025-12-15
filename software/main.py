@@ -61,7 +61,7 @@ def get_latest_sensor():
     conn.close()
     if not row:
         return {}
-    return {"temperature": row[0], "humidity": row[1]}
+    return {"temperature": f"{row[0]:.2f}", "humidity": f"{row[1]:.2f}"}
 
 # ================= MQTT =================
 def on_connect(client, userdata, flags, rc):
