@@ -32,6 +32,29 @@
 
 static TaskHandle_t relay_task_handle = NULL;
 
+void publish_sensor_data(float temp, float hum)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        ESP_LOGE("MQTT", "Failed to create JSON object");
+        return;
+    }
+    
+    cJSON_AddNumberToObject(root, "temperature", temp);
+    cJSON_AddNumberToObject(root, "humidity", hum);
+    cJSON_AddNumberToObject(root, "timestamp", (double)(esp_timer_get_time() / 1000000));
+
+    char *json_string = cJSON_PrintUnformatted(root);
+    if (json_string != NULL) {
+        mqtt_service_publish(TOPIC_SENSOR_PUB, json_string, 1);
+        free(json_string);
+    } else {
+        ESP_LOGE("MQTT", "Failed to print JSON");
+    }
+    
+    cJSON_Delete(root);
+}
+
 void dht11_task(void *pvParameters)
 {
     dht11_data_t data;
@@ -51,6 +74,8 @@ void dht11_task(void *pvParameters)
         } else {
             ESP_LOGE("DHT11", "Failed to read data from DHT11 sensor: %s", esp_err_to_name(err));
         }
+
+        publish_sensor_data(data.temperature, data.humidity);
     }
 }
 
@@ -107,28 +132,6 @@ void on_mqtt_data_received(const char *topic, int topic_len, const char *payload
     }
 }
 
-void publish_sensor_data(float temp, float hum)
-{
-    cJSON *root = cJSON_CreateObject();
-    if (root == NULL) {
-        ESP_LOGE("MQTT", "Failed to create JSON object");
-        return;
-    }
-    
-    cJSON_AddNumberToObject(root, "temperature", temp);
-    cJSON_AddNumberToObject(root, "humidity", hum);
-    cJSON_AddNumberToObject(root, "timestamp", (double)(esp_timer_get_time() / 1000000));
-
-    char *json_string = cJSON_PrintUnformatted(root);
-    if (json_string != NULL) {
-        mqtt_service_publish(TOPIC_SENSOR_PUB, json_string, 1);
-        free(json_string);
-    } else {
-        ESP_LOGE("MQTT", "Failed to print JSON");
-    }
-    
-    cJSON_Delete(root);
-}
 
 void sensor_cycle_task(void *pvParameters)
 {
@@ -154,6 +157,7 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
     // Start Wi-Fi Service
     wifi_service_start();
     
@@ -175,8 +179,8 @@ void app_main(void)
     app_controller_set_relay_task_handle(relay_task_handle);
     
     // Create Sensor Cycle Task
-    xTaskCreate(sensor_cycle_task, "SENSOR", SENSOR_TASK_STACK_SIZE, NULL, SENSOR_TASK_PRIORITY, NULL);
+    // xTaskCreate(sensor_cycle_task, "SENSOR", SENSOR_TASK_STACK_SIZE, NULL, SENSOR_TASK_PRIORITY, NULL);
     
     // Create DHT11 Task
-    // xTaskCreate(dht11_task, "DHT11 TASK", 2048, NULL, 5, NULL);
+    xTaskCreate(dht11_task, "DHT11 TASK", 2048, NULL, 5, NULL);
 }
