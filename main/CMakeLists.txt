@@ -1,5 +1,7 @@
 idf_component_register(
-    SRCS "main.c"
+    SRCS
+        "main.c"
+        "app_controller.c"
     REQUIRES 
         "dht11_driver"
         "nvs_flash"
@@ -7,6 +9,7 @@ idf_component_register(
         "service_mqtt"
         "esp_timer"
         "driver_relay"
+        "esp_driver_gpio"
     PRIV_REQUIRES
         "json"
     INCLUDE_DIRS "."

@@ -1,3 +1,8 @@
+/**
+ * @file driver_relay.c
+ * @brief Driver for controlling a relay module.
+ */
+
 #include "driver_relay.h"
 #include "driver/gpio.h"
 #include "esp_log.h"

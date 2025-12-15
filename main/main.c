@@ -7,6 +7,8 @@
 #include "nvs_flash.h"
 #include "cJSON.h"
 
+#include "app_config.h"
+#include "app_controller.h"
 #include "dht11_driver.h"
 #include "driver_relay.h"
 #include "service_wifi.h"
@@ -23,6 +25,12 @@
 #define TOPIC_STATUS_PUB "room_01/status"
 #define TOPIC_ERROR_PUB "room_01/errors"
 
+#define APP_TASK_STACK_SIZE    4096
+#define APP_TASK_PRIORITY      5
+#define SENSOR_TASK_STACK_SIZE 2048
+#define SENSOR_TASK_PRIORITY   4
+
+static TaskHandle_t relay_task_handle = NULL;
 
 void dht11_task(void *pvParameters)
 {
@@ -54,20 +62,24 @@ void relay_task(void *pvParameters)
 
     esp_err_t err = relay_init(&relay_cfg);
     if (err != ESP_OK) {
-        ESP_LOGE("RELAY", "Failed to initialize relay: %s", esp_err_to_name(err));
+        ESP_LOGE("RELAY_TASK", "Failed to initialize relay: %s", esp_err_to_name(err));
         vTaskDelete(NULL);
     }
 
-    while (1) {
-        uint32_t notification_value = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        ESP_LOGI("RELAY", "ulTaskNotifyTake returned: %u", notification_value);
+    uint32_t received_state = 0;
 
-        esp_err_t ret = relay_toggle(&relay_cfg);
-        if (ret != ESP_OK) {
-            ESP_LOGE("RELAY", "Failed to toggle relay: %s", esp_err_to_name(ret));
-            continue;
-        } else {
-            ESP_LOGI("RELAY", "Relay state toggled");
+    while (1) {
+        BaseType_t res = xTaskNotifyWait(0, ULONG_MAX, &received_state, portMAX_DELAY);
+
+        if (res == pdTRUE) {
+            ESP_LOGI("RELAY_TASK", "Received command set state: %lu", received_state);
+            
+            esp_err_t ret = relay_set_level(&relay_cfg, received_state);
+            if (ret != ESP_OK) {
+                ESP_LOGE("RELAY_TASK", "Failed to set relay: %s", esp_err_to_name(ret));
+            } else {
+                ESP_LOGI("RELAY_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
+            }
         }
     }
 }
@@ -85,120 +97,86 @@ void on_mqtt_data_received(const char *topic, int topic_len, const char *payload
             ESP_LOGE("MQTT", "Failed to allocate memory for JSON string");
             return;
         }
-
-        // 3. Parse JSON
-        cJSON *json = cJSON_Parse(json_str);
-        if (json == NULL) {
-            ESP_LOGE("MQTT", "Failed to parse JSON payload");
-            free(json_str); // Quan trọng: Free chuỗi trước khi return
-            return;
+        bool result = app_controller_send_command(json_str);
+        if (result) {
+            ESP_LOGI("MQTT", "Command processed successfully");
+        } else {
+            ESP_LOGW("MQTT", "Failed to process command");
         }
-
-        // 4. Lấy field "type" và "state"
-        cJSON *type = cJSON_GetObjectItem(json, "type");
-        cJSON *state = cJSON_GetObjectItem(json, "state");
-
-        if (cJSON_IsString(type) && (type->valuestring != NULL))
-        {
-            // --- CASE 1: FAN (state là number) ---
-            if (strcmp(type->valuestring, "fan") == 0)
-            {
-                if (cJSON_IsNumber(state)) {
-                    int fan_speed = state->valueint;
-                    ESP_LOGI("COMMAND", "Set FAN state to %d", fan_speed);
-                    // TODO: fan_control(fan_speed);
-                } else {
-                    ESP_LOGE("COMMAND", "Invalid state for FAN (expected Number)");
-                }
-            }
-            // --- CASE 2: HUMIDIFIER (state là string "on"/"off") ---
-            else if (strcmp(type->valuestring, "humidifier") == 0)
-            {
-                if (cJSON_IsString(state) && (state->valuestring != NULL)) {
-                    char *humid_state = state->valuestring;
-                    ESP_LOGI("COMMAND", "Set HUMIDIFIER state to %s", humid_state);
-                    // TODO: humidifier_control(humid_state);
-                } else {
-                    ESP_LOGE("COMMAND", "Invalid state for HUMIDIFIER (expected String)");
-                }
-            }
-            // --- CASE: UNKNOWN TYPE ---
-            else {
-                ESP_LOGW("COMMAND", "Unknown device type: %s", type->valuestring);
-            }
-        }
-        else {
-            ESP_LOGE("COMMAND", "JSON missing 'type' field or type is not string");
-        }
-
-        // 5. Dọn dẹp bộ nhớ (Bắt buộc)
-        cJSON_Delete(json); // Xóa object JSON
-        free(json_str);     // Xóa chuỗi copy
-    }
-    else 
-    {
-        // Xử lý các topic khác nếu cần
-        ESP_LOGD("MQTT", "Data received on ignored topic");
+        free(json_str);
     }
 }
 
 void publish_sensor_data(float temp, float hum)
 {
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "temp", temp);
-    cJSON_AddNumberToObject(root, "hum", hum);
-    cJSON_AddNumberToObject(root, "ts", (double)(esp_timer_get_time() / 1000000));
+    if (root == NULL) {
+        ESP_LOGE("MQTT", "Failed to create JSON object");
+        return;
+    }
+    
+    cJSON_AddNumberToObject(root, "temperature", temp);
+    cJSON_AddNumberToObject(root, "humidity", hum);
+    cJSON_AddNumberToObject(root, "timestamp", (double)(esp_timer_get_time() / 1000000));
 
     char *json_string = cJSON_PrintUnformatted(root);
-    mqtt_service_publish(TOPIC_SENSOR_PUB, json_string, 1);
+    if (json_string != NULL) {
+        mqtt_service_publish(TOPIC_SENSOR_PUB, json_string, 1);
+        free(json_string);
+    } else {
+        ESP_LOGE("MQTT", "Failed to print JSON");
+    }
     
-    free(json_string);
     cJSON_Delete(root);
+}
+
+void sensor_cycle_task(void *pvParameters)
+{
+    float fake_temp = 20.0, fake_hum = 60.0;
+    while (1) {
+        // Logic đọc DHT11 thật sẽ đặt ở đây
+        fake_temp += 0.5;
+        if (fake_temp > 35.0) fake_temp = 20.0;
+        
+        publish_sensor_data(fake_temp, fake_hum);
+        
+        // Dùng vTaskDelay thay vì busy wait
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
 }
 
 void app_main(void)
 {
-    // 1. Initialize NVS
+    // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    // 2. Start Wi-Fi Service
+    // Start Wi-Fi Service
     wifi_service_start();
     
     // Wait for Wi-Fi connection to establish
     vTaskDelay(pdMS_TO_TICKS(5000));
     
-    // 3. Start MQTT Service
+    // Initialize App Controller
+    app_controller_init();
+
+    // Start MQTT Service
     mqtt_service_start(on_mqtt_data_received);
 
-    // 4. Subscribe to command topic
     vTaskDelay(pdMS_TO_TICKS(5000)); 
     mqtt_service_subscribe(TOPIC_COMMAND_SUB, 1);
     
-    // 5. Create DHT11 Task
+    // Create Relay Task
+    xTaskCreate(relay_task, "RELAY TASK", 2048, NULL, 5, &relay_task_handle);
+    // Set relay task handle in app_controller
+    app_controller_set_relay_task_handle(relay_task_handle);
+    
+    // Create Sensor Cycle Task
+    xTaskCreate(sensor_cycle_task, "SENSOR", SENSOR_TASK_STACK_SIZE, NULL, SENSOR_TASK_PRIORITY, NULL);
+    
+    // Create DHT11 Task
     // xTaskCreate(dht11_task, "DHT11 TASK", 2048, NULL, 5, NULL);
-
-    // 6. Create Relay Task
-    xTaskCreate(relay_task, "RELAY TASK", 2048, NULL, 5, NULL);
-
-    char data_buffer[50];
-    float fake_temp = 0, fake_hum = 0;
-
-    while (1) {
-        // Simulate reading from DHT11
-        fake_temp += 0.5;
-        fake_hum += 1.0;
-        if (fake_temp > 30.0) fake_temp = 20.0;
-        if (fake_hum > 90.0) fake_hum = 40.0;
-        publish_sensor_data(fake_temp, fake_hum);
-
-        // snprintf(data_buffer, sizeof(data_buffer), "{\"temperature\": %.2f, \"humidity\": %.2f}", fake_temp, fake_hum);
-        // mqtt_service_publish("env_monitor/dht11", data_buffer);
-        // ESP_LOGI("MQTT", "Published: %s", data_buffer);
-
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
 }
