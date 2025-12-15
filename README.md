@@ -12,3 +12,10 @@ Relay -> GPIO 16
 {"type":"humidifier","state":"on"}
 
 MOSFET -> GPIO 21
+
+
+
+# Run webpage
+1. Run `fastapi_setup.sh` to setup FastAPI environment.
+2. Start server by `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
+3. Access `http://<SERVER_IP>:8000/docs` to see the API documentation.
