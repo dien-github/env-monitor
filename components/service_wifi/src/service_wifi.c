@@ -1,14 +1,25 @@
+#include "freertos/FreeRTOS.h"
 #include "service_wifi.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
 
-#define WIFI_SSID      "Nha N"
-#define WIFI_PASS      "NhaN123@"
-#define MAX_RETRY      5
+#define MAX_RETRY      10
+
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+
+wifi_config_t wifi_cfg = {
+    .sta = {
+        .ssid = CONFIG_WIFI_SSID,
+        .password = CONFIG_WIFI_PASSWORD,
+        .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+    }
+};
 
 static const char *TAG = "WIFI_SERVICE";
 static int retry_num = 0;
+static EventGroupHandle_t s_wifi_event_group;
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
@@ -16,15 +27,21 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     // Start station 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
-    } 
+    }
     // Retry connecting to AP
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (retry_num < MAX_RETRY) {
             esp_wifi_connect();
             retry_num++;
             ESP_LOGI(TAG, "Retrying to connect to the AP");
+            if (s_wifi_event_group != NULL) {
+                xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+            } else {
+                ESP_LOGE(TAG, "Event Group is NULL!");
+            }
         } else {
             ESP_LOGI(TAG, "Failed to connect to the AP after %d attempts", MAX_RETRY);
+            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
     }
     // Successfully got IP
@@ -32,10 +49,29 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP:" IPSTR, IP2STR(&event->ip_info.ip));
         retry_num = 0;
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
 
-void wifi_service_start(void) {
+void wifi_service_wait_for_connect(void)
+{
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+            WIFI_CONNECTED_BIT,
+            pdFALSE,
+            pdTRUE,
+            portMAX_DELAY);
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "Connected to AP");
+    } else {
+        ESP_LOGE(TAG, "UNEXPECTED EVENT");
+    }
+}
+
+void wifi_service_start(void)
+{
+    // Initialize the Event Group
+    s_wifi_event_group = xEventGroupCreate();
+
     // 1. Wi-Fi/LwIP Init Phase
     // Initialize TCP/IP network interface
     ESP_ERROR_CHECK(esp_netif_init());
@@ -57,18 +93,10 @@ void wifi_service_start(void) {
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                         &wifi_event_handler, NULL,
                                         &instance_got_ip));
-    // Configure Wi-Fi connection and authentication settings
-    wifi_config_t wifi_config = {
-        .sta = {
-            .ssid = WIFI_SSID,
-            .password = WIFI_PASS,
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
-        }
-    };
     // Set Wi-Fi mode to Station
     esp_wifi_set_mode(WIFI_MODE_STA);
     // Set the Wi-Fi configuration
-    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
 
     // 3. Wi-Fi Start Phase
     // Start the Wi-Fi driver

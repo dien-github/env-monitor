@@ -162,7 +162,12 @@ void app_main(void)
     wifi_service_start();
     
     // Wait for Wi-Fi connection to establish
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    // TODO
+    // => NEED TO CHANGE INTO 
+    // if not connect => change to another state just sensor and save data to NVS 
+    // send data when have wifi
+    // vTaskDelay(pdMS_TO_TICKS(10000));
+    wifi_service_wait_for_connect();
     
     // Initialize App Controller
     app_controller_init();
