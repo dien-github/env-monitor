@@ -13,8 +13,10 @@ Relay -> GPIO 16
 
 MOSFET -> GPIO 21
 
+# setup esp32
+1. Run idf.py menuconfig to set WiFi SSID and Password, MQTT credential.
+2. Build and flash the firmware to ESP32.
 
-
-# Run webpage
+# Run webpage on Linux
 1. Run `fastapi_setup.sh` to setup FastAPI environment.
 2. Start server by `. server_start.sh`
