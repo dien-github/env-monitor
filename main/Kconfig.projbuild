@@ -1,0 +1,31 @@
+menu "Project Configuration"
+
+    menu "WiFi Configuration"
+        config WIFI_SSID
+            string "WiFi SSID"
+            default ""
+            help
+                SSID of the WiFi network to connect to.
+
+        config WIFI_PASSWORD
+            string "WiFi Password"
+            default ""
+            help
+                Password of the WiFi network.
+    endmenu
+
+    menu "MQTT Configuration"
+        config MQTT_BROKER_URI
+            string "Broker URI"
+            default ""
+        
+        config MQTT_USERNAME
+            string "MQTT Username"
+            default ""
+            
+        config MQTT_PASSWORD
+            string "MQTT Password"
+            default ""
+    endmenu
+
+endmenu
