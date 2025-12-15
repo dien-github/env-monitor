@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Room 1 Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f0f2f5; padding-top: 30px; }
+        .card-box { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .val-display { font-size: 2.5rem; font-weight: 800; }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 600px;">
+        <h3 class="text-center mb-4">🏠 Room 1 Controller</h3>
+
+        <!-- MONITORING -->
+        <div class="row g-3 mb-4">
+            <div class="col-6">
+                <div class="card card-box p-3 text-center text-danger">
+                    <span>Nhiệt độ</span>
+                    <div class="val-display"><span id="temp">--</span>°C</div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card card-box p-3 text-center text-primary">
+                    <span>Độ ẩm</span>
+                    <div class="val-display"><span id="hum">--</span>%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTROL -->
+        <div class="card card-box p-4">
+            <h5 class="mb-3 border-bottom pb-2">Điều khiển</h5>
+            
+            <!-- Relay -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <label class="fw-bold">Đèn (Relay)</label>
+                <div class="btn-group">
+                    <button class="btn btn-outline-success px-4" onclick="sendCommand('relay', 1)">ON</button>
+                    <button class="btn btn-outline-secondary px-4" onclick="sendCommand('relay', 0)">OFF</button>
+                </div>
+            </div>
+
+            <!-- Fan -->
+            <div class="mb-2">
+                <label class="fw-bold d-flex justify-content-between">
+                    <span>Quạt (Fan Speed)</span>
+                    <span id="fanVal" class="badge bg-dark">0</span>
+                </label>
+                <input type="range" class="form-range mt-2" min="0" max="255" value="0" 
+                       onchange="updateFan(this.value)" oninput="document.getElementById('fanVal').innerText=this.value">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Get Status (Interval)
+        async function updateStatus() {
+            try {
+                let res = await fetch('/api/status');
+                let data = await res.json();
+                document.getElementById('temp').innerText = data.temperature || "--";
+                document.getElementById('hum').innerText = data.humidity || "--";
+            } catch (e) { console.log(e); }
+        }
+        setInterval(updateStatus, 2000);
+
+        // 2. Send Command
+        async function sendCommand(type, value) {
+            // Chuẩn hóa gửi type và value như Blueprint
+            try {
+                await fetch('/api/command', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ type: type, value: parseInt(value) })
+                });
+            } catch (e) { alert("Lỗi gửi lệnh!"); }
+        }
+
+        function updateFan(val) {
+            sendCommand('fan', val);
+        }
+    </script>
+</body>
+</html>

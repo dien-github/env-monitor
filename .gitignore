@@ -7,5 +7,12 @@ sdkconfig.old
 
 tests/
 
-
 .clangd
+__pycache__/
+
+venv/
+.venv/
+
+*.db
+
+*.Identifier
