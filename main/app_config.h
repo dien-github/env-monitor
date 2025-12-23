@@ -32,7 +32,7 @@ typedef enum {
 typedef struct {
     cmd_type_t type;
     union {
-        int fan_speed;
+        char fan_state[10];
         char humidifier_state[10];
     } value;
 } app_cmd_t;

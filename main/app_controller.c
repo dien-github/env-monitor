@@ -14,7 +14,8 @@
 #include "app_controller.h"
 
 static QueueHandle_t cmd_queue = NULL;
-static TaskHandle_t relay_task_handle = NULL;
+static TaskHandle_t humid_task_handle = NULL;
+static TaskHandle_t fan_task_handle = NULL;
 static const char *TAG = "APP_CTRL";
 
 /**
@@ -41,10 +42,16 @@ esp_err_t app_controller_init(void)
     return ESP_OK;
 }
 
-void app_controller_set_relay_task_handle(TaskHandle_t handle)
+void app_controller_set_humid_task_handle(TaskHandle_t handle)
 {
-    relay_task_handle = handle;
-    ESP_LOGI(TAG, "Relay task handle set");
+    humid_task_handle = handle;
+    ESP_LOGI(TAG, "Humidifier task handle set");
+}
+
+void app_controller_set_fan_task_handle(TaskHandle_t handle)
+{
+    fan_task_handle = handle;
+    ESP_LOGI(TAG, "Fan task handle set");
 }
 
 bool app_controller_send_command(const char *json_str)
@@ -67,10 +74,12 @@ bool app_controller_send_command(const char *json_str)
         // --- CASE 1: FAN (state là number) ---
         if (strcasecmp(type->valuestring, "fan") == 0)
         {
+            cmd.type = CMD_TYPE_FAN;
+            cmd.value.fan_state[0] = '\0';
             cJSON *state = cJSON_GetObjectItem(json, "state");
-            if (state && cJSON_IsNumber(state)) {
-                cmd.type = CMD_TYPE_FAN;
-                cmd.value.fan_speed = state->valueint;
+            if (state && state->valuestring) {
+                strncpy(cmd.value.fan_state, state->valuestring,
+                    sizeof(cmd.value.fan_state) - 1);
                 
                 if (xQueueSend(cmd_queue, &cmd, 10) == pdTRUE) {
                     result = true;
@@ -82,8 +91,7 @@ bool app_controller_send_command(const char *json_str)
             }
         }
         // --- CASE 2: HUMIDIFIER (state là string "on"/"off") ---
-        else if (strcasecmp(type->valuestring, "humidifier") == 0 ||
-                    strcasecmp(type->valuestring, "relay") == 0)
+        else if (strcasecmp(type->valuestring, "humidifier") == 0)
         {
             cmd.type = CMD_TYPE_HUMIDIFIER;
             cmd.value.humidifier_state[0] = '\0';
@@ -123,13 +131,27 @@ void app_controller_task(void *pvParameters)
 
             switch (received_cmd.type) {
                 case CMD_TYPE_FAN:
-                    ESP_LOGI(TAG, "Set fan speed to %d", received_cmd.value.fan_speed);
-                    // TODO: Gọi hàm điều khiển quạt ở đây
+                    ESP_LOGI(TAG, "Set fan state to %s", received_cmd.value.fan_state);
+                    if (fan_task_handle != NULL)
+                    {
+                        uint32_t target_state = 0;
+
+                        if (strcasecmp(received_cmd.value.fan_state, "on") == 0) {
+                            target_state = 1;
+                        } else {
+                            target_state = 0;
+                        }
+
+                        xTaskNotify(fan_task_handle, target_state, eSetValueWithOverwrite);
+                        ESP_LOGI(TAG, "Sent notification to fan task");
+                    } else {
+                        ESP_LOGW(TAG, "Fan task handle not set");
+                    }
                     break;
                 case CMD_TYPE_HUMIDIFIER:
                     ESP_LOGI(TAG, "Set humidifier state to %s", received_cmd.value.humidifier_state);
                     // Gửi notification đến relay task để toggle relay
-                    if (relay_task_handle != NULL) {
+                    if (humid_task_handle != NULL) {
                         uint32_t target_state = 0;
 
                         if (strcasecmp(received_cmd.value.humidifier_state, "on") == 0) {
@@ -138,7 +160,7 @@ void app_controller_task(void *pvParameters)
                             target_state = 0;
                         }
 
-                        xTaskNotify(relay_task_handle, target_state, eSetValueWithOverwrite);
+                        xTaskNotify(humid_task_handle, target_state, eSetValueWithOverwrite);
                         ESP_LOGI(TAG, "Sent notification to relay task");
                     } else {
                         ESP_LOGW(TAG, "Relay task handle not set");

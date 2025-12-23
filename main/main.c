@@ -13,15 +13,22 @@
 #include "driver_relay.h"
 #include "service_wifi.h"
 #include "service_mqtt.h"
+#include "sht3x.h"
 
-#define CONFIG_DHT11_PIN 4
+#define CONFIG_DHT11_PIN    4
 #define CONFIG_DHT11_CONNECTION_TIMEOUT 5
 
-#define CONFIG_RELAY_PIN 16
-#define CONFIG_RELAY_TYPE RELAY_ACTIVE_HIGH
+#define CONFIG_HUMID_PIN    16
+#define CONFIG_HUMID_TYPE   RELAY_ACTIVE_HIGH
+
+#define CONFIG_FAN_PIN      18
+#define CONFIG_FAN_TYPE     RELAY_ACTIVE_HIGH
+
+#define CONFIG_SDA_PIN      21
+#define CONFIG_SCL_PIN      22
 
 #define TOPIC_SENSOR_PUB "room_01/sensors" // {"temperature": xx.x, "humidity": yy.y }
-#define TOPIC_COMMAND_SUB "room_01/commands" // {"type": "fan", "state": xx} / {"type": "humidifier", "state": "on"/"off"}
+#define TOPIC_COMMAND_SUB "room_01/commands" // {"type": "fan", "state": "on"/"off"} / {"type": "humidifier", "state": "on"/"off"}
 #define TOPIC_STATUS_PUB "room_01/status"
 #define TOPIC_ERROR_PUB "room_01/errors"
 
@@ -30,7 +37,9 @@
 #define SENSOR_TASK_STACK_SIZE 2048
 #define SENSOR_TASK_PRIORITY   4
 
-static TaskHandle_t relay_task_handle = NULL;
+static TaskHandle_t humid_task_handle = NULL;
+static TaskHandle_t fan_task_handle = NULL;
+static const char *TAG = "MAIN";
 
 void publish_sensor_data(float temp, float hum)
 {
@@ -55,6 +64,7 @@ void publish_sensor_data(float temp, float hum)
     cJSON_Delete(root);
 }
 
+/* dht11 task
 void dht11_task(void *pvParameters)
 {
     dht11_data_t data;
@@ -78,12 +88,37 @@ void dht11_task(void *pvParameters)
         publish_sensor_data(data.temperature, data.humidity);
     }
 }
+*/
 
-void relay_task(void *pvParameters)
+void sht3x_task(void *pvParameters) {
+    float temperature = 0.0;
+    float humidity = 0.0;
+
+    TickType_t last_wake_time = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(CONFIG_DHT11_CONNECTION_TIMEOUT * 3000); // 3 seconds
+
+    while (1) {
+        /* Wait for the next cycle */
+        vTaskDelayUntil(&last_wake_time, period);
+
+        // Gọi hàm đo single shot
+        esp_err_t res = sht3x_read_data(&temperature, &humidity);
+
+        if (res == ESP_OK) {
+            ESP_LOGI(TAG, "Temp: %.2f °C, Hum: %.2f %%", temperature, humidity);
+        } else {
+            ESP_LOGE(TAG, "SHT3x read error: %s", esp_err_to_name(res));
+        }
+
+        publish_sensor_data(temperature, humidity);
+    }
+}
+
+void humid_task(void *pvParameters)
 {
     relay_config_t relay_cfg;
-    relay_cfg.gpio_pin = CONFIG_RELAY_PIN;
-    relay_cfg.type = CONFIG_RELAY_TYPE;
+    relay_cfg.gpio_pin = CONFIG_HUMID_PIN;
+    relay_cfg.type = CONFIG_HUMID_TYPE;
 
     esp_err_t err = relay_init(&relay_cfg);
     if (err != ESP_OK) {
@@ -97,13 +132,43 @@ void relay_task(void *pvParameters)
         BaseType_t res = xTaskNotifyWait(0, ULONG_MAX, &received_state, portMAX_DELAY);
 
         if (res == pdTRUE) {
-            ESP_LOGI("RELAY_TASK", "Received command set state: %lu", received_state);
+            ESP_LOGI("HUMID_TASK", "Received command set state: %lu", received_state);
             
             esp_err_t ret = relay_set_level(&relay_cfg, received_state);
             if (ret != ESP_OK) {
-                ESP_LOGE("RELAY_TASK", "Failed to set relay: %s", esp_err_to_name(ret));
+                ESP_LOGE("HUMID_TASK", "Failed to set relay: %s", esp_err_to_name(ret));
             } else {
-                ESP_LOGI("RELAY_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
+                ESP_LOGI("HUMID_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
+            }
+        }
+    }
+}
+
+void fan_task(void *pvParameters)
+{
+    relay_config_t relay_cfg;
+    relay_cfg.gpio_pin = CONFIG_FAN_PIN;
+    relay_cfg.type = CONFIG_FAN_TYPE;
+
+    esp_err_t err = relay_init(&relay_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE("FAN_TASK", "Failed to initialize relay: %s", esp_err_to_name(err));
+        vTaskDelete(NULL);
+    }
+
+    uint32_t received_state = 0;
+
+    while (1) {
+        BaseType_t res = xTaskNotifyWait(0, ULONG_MAX, &received_state, portMAX_DELAY);
+
+        if (res == pdTRUE) {
+            ESP_LOGI("FAN_TASK", "Received command set state: %lu", received_state);
+            
+            esp_err_t ret = relay_set_level(&relay_cfg, received_state);
+            if (ret != ESP_OK) {
+                ESP_LOGE("FAN_TASK", "Failed to set relay: %s", esp_err_to_name(ret));
+            } else {
+                ESP_LOGI("FAN_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
             }
         }
     }
@@ -131,7 +196,6 @@ void on_mqtt_data_received(const char *topic, int topic_len, const char *payload
         free(json_str);
     }
 }
-
 
 void sensor_cycle_task(void *pvParameters)
 {
@@ -162,7 +226,7 @@ void app_main(void)
     wifi_service_start();
     
     // Wait for Wi-Fi connection to establish
-    // TODO
+    // TODO Change waiting method
     // => NEED TO CHANGE INTO 
     // if not connect => change to another state just sensor and save data to NVS 
     // send data when have wifi
@@ -178,14 +242,23 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(5000)); 
     mqtt_service_subscribe(TOPIC_COMMAND_SUB, 1);
     
-    // Create Relay Task
-    xTaskCreate(relay_task, "RELAY TASK", 2048, NULL, 5, &relay_task_handle);
+    // Create Relay - HUMID Task
+    xTaskCreate(humid_task, "HUMID TASK", 2048, NULL, 5, &humid_task_handle);
     // Set relay task handle in app_controller
-    app_controller_set_relay_task_handle(relay_task_handle);
+    app_controller_set_humid_task_handle(humid_task_handle);
     
+    // Create Relay - FAN Task
+    xTaskCreate(fan_task, "FAN TASK", 2048, NULL, 5, &fan_task_handle);
+    // Set fan task handle in app_controller
+    app_controller_set_fan_task_handle(fan_task_handle);
+
     // Create Sensor Cycle Task
     // xTaskCreate(sensor_cycle_task, "SENSOR", SENSOR_TASK_STACK_SIZE, NULL, SENSOR_TASK_PRIORITY, NULL);
     
     // Create DHT11 Task
-    xTaskCreate(dht11_task, "DHT11 TASK", 2048, NULL, 5, NULL);
+    // xTaskCreate(dht11_task, "DHT11 TASK", 2048, NULL, 5, NULL);
+
+    ESP_ERROR_CHECK(sht3x_init_i2c(CONFIG_SDA_PIN, CONFIG_SCL_PIN));
+    ESP_LOGI(TAG, "I2C Initialized");
+    xTaskCreate(sht3x_task, "SHT3X TASK", 4096, NULL, 5, NULL);
 }

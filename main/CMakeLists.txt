@@ -10,6 +10,7 @@ idf_component_register(
         "esp_timer"
         "driver_relay"
         "esp_driver_gpio"
+        "sht3x"
     PRIV_REQUIRES
         "json"
     INCLUDE_DIRS "."
