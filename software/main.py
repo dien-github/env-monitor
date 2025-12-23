@@ -118,8 +118,8 @@ async def api_status():
 async def api_command(cmd: dict):
     """
     Expected from UI:
-    { "type": "relay", "value": 1 }
-    { "type": "fan", "value": 120 }
+    { "type": "humidifier", "value": "on"/"off" }
+    { "type": "fan", "value": "on"/"off" }
     """
 
     if "type" not in cmd:
@@ -129,16 +129,16 @@ async def api_command(cmd: dict):
     value = cmd.get("value")
 
     # ===== CHUẨN HÓA ĐÚNG THEO FIRMWARE =====
-    if device_type == "relay":
+    if device_type == "humidifier":
         payload = {
             "type": "humidifier",
-            "state": "on" if int(value) == 1 else "off"
+            "state": "on" if value == "on" else "off"
         }
 
     elif device_type == "fan":
         payload = {
             "type": "fan",
-            "state": int(value)
+            "state": "on" if value == "on" else "off"
         }
 
     else:

@@ -15,7 +15,6 @@
     <div class="container" style="max-width: 600px;">
         <h3 class="text-center mb-4">🏠 Room 1 Controller</h3>
 
-        <!-- MONITORING -->
         <div class="row g-3 mb-4">
             <div class="col-6">
                 <div class="card card-box p-3 text-center text-danger">
@@ -31,27 +30,23 @@
             </div>
         </div>
 
-        <!-- CONTROL -->
         <div class="card card-box p-4">
             <h5 class="mb-3 border-bottom pb-2">Điều khiển</h5>
             
-            <!-- Relay -->
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <label class="fw-bold">Đèn (Relay)</label>
+                <label class="fw-bold">Humidifier (Relay)</label>
                 <div class="btn-group">
-                    <button class="btn btn-outline-success px-4" onclick="sendCommand('relay', 1)">ON</button>
-                    <button class="btn btn-outline-secondary px-4" onclick="sendCommand('relay', 0)">OFF</button>
+                    <button class="btn btn-outline-success px-4" onclick="sendCommand('humidifier', 'on')">ON</button>
+                    <button class="btn btn-outline-secondary px-4" onclick="sendCommand('humidifier', 'off')">OFF</button>
                 </div>
             </div>
 
-            <!-- Fan -->
-            <div class="mb-2">
-                <label class="fw-bold d-flex justify-content-between">
-                    <span>Quạt (Fan Speed)</span>
-                    <span id="fanVal" class="badge bg-dark">0</span>
-                </label>
-                <input type="range" class="form-range mt-2" min="0" max="255" value="0" 
-                       onchange="updateFan(this.value)" oninput="document.getElementById('fanVal').innerText=this.value">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="fw-bold">Quạt (Fan)</label>
+                <div class="btn-group">
+                    <button class="btn btn-outline-success px-4" onclick="sendCommand('fan', 'on')">ON</button>
+                    <button class="btn btn-outline-secondary px-4" onclick="sendCommand('fan', 'off')">OFF</button>
+                </div>
             </div>
         </div>
     </div>
@@ -70,18 +65,13 @@
 
         // 2. Send Command
         async function sendCommand(type, value) {
-            // Chuẩn hóa gửi type và value như Blueprint
             try {
                 await fetch('/api/command', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ type: type, value: parseInt(value) })
+                    body: JSON.stringify({ type: type, value: value })
                 });
             } catch (e) { alert("Lỗi gửi lệnh!"); }
-        }
-
-        function updateFan(val) {
-            sendCommand('fan', val);
         }
     </script>
 </body>
