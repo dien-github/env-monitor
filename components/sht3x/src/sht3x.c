@@ -21,7 +21,7 @@ static uint8_t sht3x_calc_crc(uint8_t *data, size_t len) {
     return crc;
 }
 
-esp_err_t sht3x_init_i2c(int sda_pin, int scl_pin)
+esp_err_t sht3x_init_i2c(uint8_t sda_pin, uint8_t scl_pin)
 {
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,

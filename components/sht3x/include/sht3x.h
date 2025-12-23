@@ -13,8 +13,22 @@ typedef struct {
     float humidity;
 } sht3x_data_t;
 
-esp_err_t sht3x_init_i2c(int sda_pin, int scl_pin);
+/**
+ * @brief Initializes the ESP32 I2C master driver with 100kHz clock speed and internal pull-ups enabled.
+ * @param [in] sda_pin GPIO number for SDA line.
+ * @param [in] scl_pin GPIO number for SCL line.
+ * @return ESP_OK on success, or an error code on failure.
+ */
+esp_err_t sht3x_init_i2c(uint8_t sda_pin, uint8_t scl_pin);
 
+/**
+ * @brief Sends measurement command (High Repeatability), 
+ *        waits 20ms for conversion, reads 6 bytes, 
+ *        verifies CRC-8, and calculates physical values.
+ * @param [out] temp Pointer to store the measured temperature in Celsius.
+ * @param [out] hum Pointer to store the measured relative humidity in percentage.
+ * @return ESP_OK on success, or an error code on failure.
+ */
 esp_err_t sht3x_read_data(float *temp, float *hum);
 
 #endif /* SHT3X_H */
