@@ -20,3 +20,20 @@ MOSFET -> GPIO 21
 # Run webpage on Linux
 1. Run `fastapi_setup.sh` to setup FastAPI environment.
 2. Start server by `. server_start.sh`
+
+
+# Ideas
+- Get temperature and humidity outdoor through Weather API in backend to display outdoor data on webpage. Compare indoor and outdoor data. Alert user when difference is too high.
+- More rooms monitoring.
+
+# Scripts
+T1 Connect WiFi 
+    wsl
+    show log => khoanh code lại 
+T2 Connect MQTT
+    wsl
+    show log => khoanh code lại
+T3 Read sensor
+    wsl->hivemq->webpage
+T4 Control actuators
+    webpage->hivemq->wsl->real
