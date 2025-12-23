@@ -24,6 +24,7 @@
 #define CONFIG_FAN_PIN      18
 #define CONFIG_FAN_TYPE     RELAY_ACTIVE_HIGH
 
+#define CONFIG_SHT3X_PERIOD_MS 2000
 #define CONFIG_SDA_PIN      21
 #define CONFIG_SCL_PIN      22
 
@@ -95,7 +96,7 @@ void sht3x_task(void *pvParameters) {
     float humidity = 0.0;
 
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t period = pdMS_TO_TICKS(CONFIG_DHT11_CONNECTION_TIMEOUT * 3000); // 3 seconds
+    const TickType_t period = pdMS_TO_TICKS(CONFIG_SHT3X_PERIOD_MS);
 
     while (1) {
         /* Wait for the next cycle */
