@@ -33,10 +33,11 @@
 #define TOPIC_STATUS_PUB "room_01/status"
 #define TOPIC_ERROR_PUB "room_01/errors"
 
-#define APP_TASK_STACK_SIZE    4096
-#define APP_TASK_PRIORITY      5
-#define SENSOR_TASK_STACK_SIZE 2048
-#define SENSOR_TASK_PRIORITY   4
+#define APP_TASK_STACK_SIZE     4096
+#define APP_TASK_PRIORITY       5
+#define SENSOR_TASK_STACK_SIZE  2048
+#define SENSOR_TASK_PRIORITY    4
+#define TASK_SHT3X_STACK_SIZE   3072    /* 3 bytes */
 
 static TaskHandle_t humid_task_handle = NULL;
 static TaskHandle_t fan_task_handle = NULL;
@@ -112,9 +113,15 @@ void sht3x_task(void *pvParameters) {
         }
 
         publish_sensor_data(temperature, humidity);
+
+        UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
+        ESP_LOGI("SENSOR TASK", "Stack còn trống: %u bytes", high_water_mark);
     }
 }
 
+/**
+ * @details Stack size
+ */
 void humid_task(void *pvParameters)
 {
     relay_config_t relay_cfg;
@@ -142,6 +149,9 @@ void humid_task(void *pvParameters)
                 ESP_LOGI("HUMID_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
             }
         }
+
+        UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
+        ESP_LOGI("HUMID TASK", "Stack còn trống: %u bytes", high_water_mark);
     }
 }
 
@@ -172,6 +182,9 @@ void fan_task(void *pvParameters)
                 ESP_LOGI("FAN_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
             }
         }
+
+        UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
+        ESP_LOGI("FAN_TASK", "Stack còn trống: %u bytes", high_water_mark);
     }
 }
 
@@ -210,6 +223,15 @@ void sensor_cycle_task(void *pvParameters)
         
         // Dùng vTaskDelay thay vì busy wait
         vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
+void print_all_tasks(void *pvParameters) {
+    while (1) {
+        char buffer[1024];
+        vTaskList(buffer);  // Liệt kê tất cả task + stack usage
+        ESP_LOGI(TAG, "Danh sách task:\n%s", buffer);
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
 }
 
@@ -261,5 +283,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(sht3x_init_i2c(CONFIG_SDA_PIN, CONFIG_SCL_PIN));
     ESP_LOGI(TAG, "I2C Initialized");
-    xTaskCreate(sht3x_task, "SHT3X TASK", 4096, NULL, 5, NULL);
+    xTaskCreate(sht3x_task, "SHT3X TASK", TASK_SHT3X_STACK_SIZE, NULL, 5, NULL);
+
+    // xTaskCreate(print_all_tasks, "TASK_LIST", 2048, NULL, 1, NULL);
 }

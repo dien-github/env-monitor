@@ -13,6 +13,8 @@
 #include "app_config.h"
 #include "app_controller.h"
 
+#define TASK_APPCTRL_STACK_SIZE     2048
+
 static QueueHandle_t cmd_queue = NULL;
 static TaskHandle_t humid_task_handle = NULL;
 static TaskHandle_t fan_task_handle = NULL;
@@ -32,7 +34,7 @@ esp_err_t app_controller_init(void)
     ESP_LOGI(TAG, "Command queue created successfully");
 
     // Create application controller task
-    esp_err_t ret = xTaskCreate(app_controller_task, "APP CTRL TASK", 4096, NULL, 5, NULL);
+    esp_err_t ret = xTaskCreate(app_controller_task, "APP CTRL TASK", TASK_APPCTRL_STACK_SIZE, NULL, 5, NULL);
     if (ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create application controller task");
         return ESP_FAIL;
@@ -171,5 +173,8 @@ void app_controller_task(void *pvParameters)
                     break;
             }
         }
+
+        UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
+        ESP_LOGI(TAG, "Stack còn trống: %u bytes", high_water_mark);
     }
 }
