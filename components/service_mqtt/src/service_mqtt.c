@@ -3,18 +3,23 @@
 #include "esp_log.h"
 #include "esp_crt_bundle.h"
 
-#define MQTT_BROKER_PORT 8883
-
 static const char *TAG = "MQTT_SERVICE";
 static esp_mqtt_client_handle_t client = NULL;
 static mqtt_data_callback_t data_callback = NULL;
 
 const esp_mqtt_client_config_t mqtt_cfg = {
     .broker.address.uri = CONFIG_MQTT_BROKER_URI,
-    .broker.address.port = MQTT_BROKER_PORT,
+    .broker.address.port = CONFIG_MQTT_BROKER_PORT,
     .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
     .credentials.username = CONFIG_MQTT_USERNAME,
     .credentials.authentication.password = CONFIG_MQTT_PASSWORD,
+    .session.last_will = {
+        .topic = CONFIG_MQTT_LWT_TOPIC,
+        .msg = "offline",
+        .msg_len = 7,
+        .qos = 1,
+        .retain = true,
+    }
 };
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, 
@@ -25,6 +30,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     switch ((esp_mqtt_event_id_t)event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+            esp_mqtt_client_publish(client, CONFIG_MQTT_LWT_TOPIC, "online", 0, 1, 1);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
