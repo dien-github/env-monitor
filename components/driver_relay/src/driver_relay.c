@@ -26,9 +26,10 @@ esp_err_t relay_init(relay_config_t *config)
     }
 
     // Configure the GPIO pin for the relay
+    // Use INPUT_OUTPUT so we can read back the actual pin level with gpio_get_level()
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << config->gpio_pin),
-        .mode = GPIO_MODE_OUTPUT,
+        .mode = GPIO_MODE_INPUT_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE
@@ -58,13 +59,28 @@ esp_err_t relay_init(relay_config_t *config)
 esp_err_t relay_set_level(relay_config_t *config, uint32_t level) {
     if (config == NULL) return ESP_ERR_INVALID_ARG;
     
+    ESP_LOGI(TAG, "[relay_set_level] Setting GPIO %d (Type: %s) to level: %lu", 
+             config->gpio_pin,
+             config->type == RELAY_ACTIVE_HIGH ? "Active-High" : "Active-Low",
+             level);
+    
     // Xử lý Active High/Low
     uint32_t physical_level = level;
     if (config->type == RELAY_ACTIVE_LOW) {
         physical_level = !level;
     }
 
-    return gpio_set_level(config->gpio_pin, physical_level);
+    ESP_LOGI(TAG, "[relay_set_level] Physical level to set: %lu", physical_level);
+    
+    esp_err_t ret = gpio_set_level(config->gpio_pin, physical_level);
+    
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "[relay_set_level] GPIO set successful");
+    } else {
+        ESP_LOGE(TAG, "[relay_set_level] GPIO set failed: %s", esp_err_to_name(ret));
+    }
+    
+    return ret;
 }
 
 esp_err_t relay_set_state(relay_config_t *config, relay_state_t state)
@@ -101,8 +117,13 @@ esp_err_t relay_get_state(relay_config_t *config, relay_state_t *state)
         return ESP_ERR_INVALID_ARG;
     }
 
+    ESP_LOGI(TAG, "[relay_get_state] Reading GPIO %d (Type: %s)", 
+             config->gpio_pin,
+             config->type == RELAY_ACTIVE_HIGH ? "Active-High" : "Active-Low");
+
     // Read GPIO level
     int level = gpio_get_level(config->gpio_pin);
+    ESP_LOGI(TAG, "[relay_get_state] GPIO level: %d", level);
     
     // Interpret level based on relay type
     if (config->type == RELAY_ACTIVE_HIGH) {
@@ -110,6 +131,9 @@ esp_err_t relay_get_state(relay_config_t *config, relay_state_t *state)
     } else { // RELAY_ACTIVE_LOW
         *state = (level == 0) ? RELAY_STATE_ON : RELAY_STATE_OFF;
     }
+    
+    ESP_LOGI(TAG, "[relay_get_state] Relay state: %s", 
+             *state == RELAY_STATE_ON ? "ON" : "OFF");
     
     return ESP_OK;
 }
