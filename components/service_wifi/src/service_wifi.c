@@ -19,6 +19,7 @@ wifi_config_t wifi_cfg = {
 
 static const char *TAG = "WIFI_SERVICE";
 static int retry_num = 0;
+static bool ever_connected = false;  // Track if WiFi has ever connected successfully
 static EventGroupHandle_t s_wifi_event_group;
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -30,15 +31,16 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
     // Retry connecting to AP
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        if (retry_num < MAX_RETRY) {
+        // If we've connected before, retry indefinitely (for reconnection after WiFi loss)
+        if (ever_connected) {
+            esp_wifi_connect();
+            ESP_LOGI(TAG, "WiFi disconnected, retrying to reconnect...");
+        }
+        // If never connected, use limited retries (for initial connection)
+        else if (retry_num < MAX_RETRY) {
             esp_wifi_connect();
             retry_num++;
-            ESP_LOGI(TAG, "Retrying to connect to the AP");
-            if (s_wifi_event_group != NULL) {
-                xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-            } else {
-                ESP_LOGE(TAG, "Event Group is NULL!");
-            }
+            ESP_LOGI(TAG, "Retrying to connect to the AP (attempt %d/%d)", retry_num, MAX_RETRY);
         } else {
             ESP_LOGI(TAG, "Failed to connect to the AP after %d attempts", MAX_RETRY);
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
@@ -49,6 +51,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP:" IPSTR, IP2STR(&event->ip_info.ip));
         retry_num = 0;
+        ever_connected = true;  // Mark that we've successfully connected
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
