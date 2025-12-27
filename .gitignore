@@ -16,3 +16,9 @@ venv/
 *.db
 
 *.Identifier
+main/include/Config/Global.h
+main/include/Config/SEGGER_SYSVIEW_Conf.h
+main/include/SEGGER/SEGGER.h
+CODE_REVIEW_UPDATED.md
+ARCHITECTURE_REVIEW.md
+FINAL_REVIEW.md
