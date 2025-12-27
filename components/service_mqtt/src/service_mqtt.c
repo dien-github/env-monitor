@@ -9,8 +9,8 @@ static mqtt_data_callback_t data_callback = NULL;
 
 const esp_mqtt_client_config_t mqtt_cfg = {
     .broker.address.uri = CONFIG_MQTT_BROKER_URI,
-    .broker.address.port = CONFIG_MQTT_BROKER_PORT,
     .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
+    .network.keepalive = 15, // seconds; faster LWT on abrupt disconnects
     .credentials.username = CONFIG_MQTT_USERNAME,
     .credentials.authentication.password = CONFIG_MQTT_PASSWORD,
     .session.last_will = {
