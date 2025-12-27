@@ -28,10 +28,12 @@
 #define CONFIG_SDA_PIN      21
 #define CONFIG_SCL_PIN      22
 
-#define TOPIC_SENSOR_PUB "room_01/sensors" // {"temperature": xx.x, "humidity": yy.y }
-#define TOPIC_COMMAND_SUB "room_01/commands" // {"type": "fan", "state": "on"/"off"} / {"type": "humidifier", "state": "on"/"off"}
-#define TOPIC_STATUS_PUB "room_01/status"
-#define TOPIC_ERROR_PUB "room_01/errors"
+#define TOPIC_SENSOR_PUB            "room_01/sensors" // {"temperature": xx.x, "humidity": yy.y }
+#define TOPIC_COMMAND_SUB           "room_01/commands" // {"type": "fan", "state": "on"/"off"} / {"type": "humidifier", "state": "on"/"off"}
+#define TOPIC_STATUS_SYSTEM_PUB     "room_01/status/system"
+#define TOPIC_STATUS_CONNECTION_PUB "room_01/status/connection"
+#define TOPIC_STATUS_DEVICE_PUB     "room_01/status/devices"
+#define TOPIC_ERROR_PUB             "room_01/errors"
 
 #define APP_TASK_STACK_SIZE     4096
 #define APP_TASK_PRIORITY       5
@@ -63,6 +65,38 @@ void publish_sensor_data(float temp, float hum)
         ESP_LOGE("MQTT", "Failed to print JSON");
     }
     
+    cJSON_Delete(root);
+}
+
+/**
+ * @brief Publish device status to MQTT
+ * - topic: room_01/status/devices
+ * - goal: Report the actual state of actuators after receiving a command
+ * - payload: {"device": "fan", "state": "on", "timestamp": 1234}
+ * - qos: 1
+ * - retain: FALSE
+ * - trigger: Immediately after relay_set_level successfully executes the command in each task |
+ */
+void publish_device_status(const char *device, const char *status)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        ESP_LOGE("MQTT", "Failed to create JSON object for status message");
+        return;
+    }
+
+    cJSON_AddStringToObject(root, "device", device);
+    cJSON_AddStringToObject(root, "state", status);
+    cJSON_AddNumberToObject(root, "timestamp", (double)(esp_timer_get_time() / 1000000));
+
+    char *json_string = cJSON_PrintUnformatted(root);
+    if (json_string != NULL) {
+        mqtt_service_publish(TOPIC_STATUS_DEVICE_PUB, json_string, 1);
+        free(json_string);
+    } else {
+        ESP_LOGE("MQTT", "Failed to print JSON for status message");
+    }
+
     cJSON_Delete(root);
 }
 
@@ -119,9 +153,6 @@ void sht3x_task(void *pvParameters) {
     }
 }
 
-/**
- * @details Stack size
- */
 void humid_task(void *pvParameters)
 {
     relay_config_t relay_cfg;
@@ -135,6 +166,7 @@ void humid_task(void *pvParameters)
     }
 
     uint32_t received_state = 0;
+    relay_state_t last_state = RELAY_STATE_OFF;  // Track actual relay state
 
     while (1) {
         BaseType_t res = xTaskNotifyWait(0, ULONG_MAX, &received_state, portMAX_DELAY);
@@ -146,12 +178,24 @@ void humid_task(void *pvParameters)
             if (ret != ESP_OK) {
                 ESP_LOGE("HUMID_TASK", "Failed to set relay: %s", esp_err_to_name(ret));
             } else {
-                ESP_LOGI("HUMID_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
+                // Get actual relay state
+                relay_state_t current_state;
+                ret = relay_get_state(&relay_cfg, &current_state);
+                if (ret == ESP_OK) {
+                    // Only publish if state changed
+                    if (current_state != last_state) {
+                        last_state = current_state;
+                        publish_device_status("humidifier", current_state == RELAY_STATE_ON ? "on" : "off");
+                        ESP_LOGI("HUMID_TASK", "Relay state updated to: %s", current_state == RELAY_STATE_ON ? "ON" : "OFF");
+                    }
+                } else {
+                    ESP_LOGE("HUMID_TASK", "Failed to get relay state: %s", esp_err_to_name(ret));
+                }
             }
         }
 
         UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
-        ESP_LOGI("HUMID TASK", "Stack còn trống: %u bytes", high_water_mark);
+        ESP_LOGI("HUMID_TASK", "Stack còn trống: %u bytes", high_water_mark);
     }
 }
 
@@ -168,6 +212,7 @@ void fan_task(void *pvParameters)
     }
 
     uint32_t received_state = 0;
+    relay_state_t last_state = RELAY_STATE_OFF;  // Track actual relay state
 
     while (1) {
         BaseType_t res = xTaskNotifyWait(0, ULONG_MAX, &received_state, portMAX_DELAY);
@@ -179,8 +224,22 @@ void fan_task(void *pvParameters)
             if (ret != ESP_OK) {
                 ESP_LOGE("FAN_TASK", "Failed to set relay: %s", esp_err_to_name(ret));
             } else {
-                ESP_LOGI("FAN_TASK", "Relay state updated to: %s", received_state ? "ON" : "OFF");
+                // Get actual relay state
+                relay_state_t current_state;
+                ret = relay_get_state(&relay_cfg, &current_state);
+                if (ret == ESP_OK) {
+                    // Only publish if state changed
+                    if (current_state != last_state) {
+                        last_state = current_state;
+                        publish_device_status("fan", current_state == RELAY_STATE_ON ? "on" : "off");
+                        ESP_LOGI("FAN_TASK", "Relay state updated to: %s", current_state == RELAY_STATE_ON ? "ON" : "OFF");
+                    }
+                } else {
+                    ESP_LOGE("FAN_TASK", "Failed to get relay state: %s", esp_err_to_name(ret));
+                }
             }
+        } else {
+            ESP_LOGW("FAN_TASK", "xTaskNotifyWait failed");
         }
 
         UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);

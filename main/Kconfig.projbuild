@@ -18,6 +18,10 @@ menu "Project Configuration"
         config MQTT_BROKER_URI
             string "Broker URI"
             default ""
+
+        config MQTT_BROKER_PORT
+            int "Broker Port"
+            default 8883
         
         config MQTT_USERNAME
             string "MQTT Username"
@@ -26,6 +30,10 @@ menu "Project Configuration"
         config MQTT_PASSWORD
             string "MQTT Password"
             default ""
+        
+        config MQTT_LWT_TOPIC
+            string "MQTT Last Will Topic"
+            default "room_01/status/connection"
     endmenu
 
 endmenu
