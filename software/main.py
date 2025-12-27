@@ -58,6 +58,15 @@ def init_db():
             ts TEXT
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS system_status (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uptime_ms INTEGER,
+            free_heap INTEGER,
+            rssi REAL,
+            ts TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -128,6 +137,28 @@ def get_connection_status():
         return {"status": "offline"}
     return {"status": row[0]}
 
+def save_system_status(uptime_ms: int, free_heap: int, rssi: float):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO system_status (uptime_ms, free_heap, rssi, ts) VALUES (?, ?, ?, ?)",
+        (uptime_ms, free_heap, rssi, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+def get_system_status():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        "SELECT uptime_ms, free_heap, rssi FROM system_status ORDER BY id DESC LIMIT 1"
+    )
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return {"uptime_ms": 0, "free_heap": 0, "rssi": -100}
+    return {"uptime_ms": int(row[0] or 0), "free_heap": int(row[1] or 0), "rssi": float(row[2] or -100)}
+
 # ================= MQTT =================
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
@@ -136,6 +167,7 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe("room_01/status/connection", qos=1)
         client.subscribe("room_01/status/network", qos=1)
         client.subscribe("room_01/status/devices", qos=1)
+        client.subscribe("room_01/status/system", qos=0)
     else:
         print("MQTT connect failed:", rc)
 
@@ -182,6 +214,25 @@ def on_message(client, userdata, msg):
             "status": status
         })
         print(f"Connection status: {status}")
+
+    elif msg.topic == "room_01/status/system":
+        if not isinstance(payload_obj, dict):
+            print("Invalid JSON from MQTT (system)")
+            return
+        uptime_ms = payload_obj.get("uptime_ms")
+        free_heap = payload_obj.get("free_heap")
+        rssi = payload_obj.get("rssi")
+        if rssi is None:
+            print("System payload missing rssi")
+            return
+        save_system_status(int(uptime_ms or 0), int(free_heap or 0), float(rssi))
+        broadcast_message({
+            "type": "system",
+            "uptime_ms": int(uptime_ms or 0),
+            "free_heap": int(free_heap or 0),
+            "rssi": float(rssi)
+        })
+        print(f"System status: rssi={rssi}, heap={free_heap}, uptime={uptime_ms}")
 
     elif msg.topic == "room_01/status/devices":
         if not isinstance(payload_obj, dict):
@@ -274,6 +325,14 @@ async def websocket_endpoint(websocket: WebSocket):
             "type": "connection",
             "status": connection_status.get("status", "offline")
         })
+        # Send latest system status (RSSI, heap, uptime)
+        system_status = get_system_status()
+        await websocket.send_json({
+            "type": "system",
+            "uptime_ms": system_status.get("uptime_ms", 0),
+            "free_heap": system_status.get("free_heap", 0),
+            "rssi": system_status.get("rssi", -100)
+        })
         
         # Keep connection alive
         while True:
@@ -297,6 +356,10 @@ async def api_device_status(device: str):
 @app.get("/api/connection-status")
 async def api_connection_status():
     return JSONResponse(get_connection_status())
+
+@app.get("/api/system-status")
+async def api_system_status():
+    return JSONResponse(get_system_status())
 
 @app.post("/api/command")
 async def api_command(cmd: dict):
