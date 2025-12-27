@@ -16,7 +16,7 @@
 #include "driver_relay.h"
 #include "service_wifi.h"
 #include "service_mqtt.h"
-#include "sht3x.h"
+#include "driver_sht3x.h"
 
 #define CONFIG_DHT11_PIN    4
 #define CONFIG_DHT11_CONNECTION_TIMEOUT 5

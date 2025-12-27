@@ -1,4 +1,4 @@
-#include "sht3x.h"
+#include "driver_sht3x.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"

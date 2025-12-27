@@ -9,9 +9,9 @@ idf_component_register(
         "service_mqtt"
         "esp_timer"
         "esp_wifi"
+        "driver_sht3x"
         "driver_relay"
         "esp_driver_gpio"
-        "sht3x"
     PRIV_REQUIRES
         "json"
     INCLUDE_DIRS "."
