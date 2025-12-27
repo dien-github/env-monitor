@@ -2,6 +2,9 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
+#include "esp_err.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -195,7 +198,7 @@ void humid_task(void *pvParameters)
         }
 
         UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
-        ESP_LOGI("HUMID_TASK", "Stack còn trống: %u bytes", high_water_mark);
+        ESP_LOGI("HUMID_TASK", "Stack high water mark: %u bytes", high_water_mark);
     }
 }
 
@@ -243,7 +246,7 @@ void fan_task(void *pvParameters)
         }
 
         UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
-        ESP_LOGI("FAN_TASK", "Stack còn trống: %u bytes", high_water_mark);
+        ESP_LOGI("FAN_TASK", "Stack high water mark: %u bytes", high_water_mark);
     }
 }
 
@@ -291,6 +294,65 @@ void print_all_tasks(void *pvParameters) {
         vTaskList(buffer);  // Liệt kê tất cả task + stack usage
         ESP_LOGI(TAG, "Danh sách task:\n%s", buffer);
         vTaskDelay(pdMS_TO_TICKS(10000));
+    }
+}
+
+void publish_health_check_params(health_check_params_t *params)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        ESP_LOGE("HEALTH_CHECK_MQTT", "Failed to create JSON object for health check");
+        return;
+    }
+
+    cJSON_AddNumberToObject(root, "uptime_ms", params->uptime_ms);
+    cJSON_AddNumberToObject(root, "free_heap", params->free_heap_bytes);
+    cJSON_AddNumberToObject(root, "wifi_rssi", params->wifi_rssi);
+
+    char *json_string = cJSON_PrintUnformatted(root);
+    if (json_string != NULL) {
+        mqtt_service_publish(TOPIC_STATUS_SYSTEM_PUB, json_string, 1);
+        free(json_string);
+    } else {
+        ESP_LOGE("HEALTH_CHECK_MQTT", "Failed to print JSON for health check");
+    }
+
+    cJSON_Delete(root);
+}
+
+void health_check_task(void *pvParameters)
+{
+    health_check_params_t params;
+
+    TickType_t last_wake_time = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(CONFIG_HEALTH_CHECK_PERIOD_MS);
+
+    while (1)
+    {
+        vTaskDelayUntil(&last_wake_time, period);
+
+        ESP_LOGI("HEALTH_CHECK", "Performing health check...");
+
+        /* Get uptime */
+        params.uptime_ms = esp_timer_get_time() / 1000;
+        ESP_LOGI("HEALTH_CHECK", "Uptime (ms): %u", params.uptime_ms);
+
+        /* Get free_heap*/
+        params.free_heap_bytes = esp_get_free_heap_size();
+        ESP_LOGI("HEALTH_CHECK", "Free heap (bytes): %u", params.free_heap_bytes);
+        
+        /* Get rssi */
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+            ESP_LOGE("HEALTH_CHECK", "Failed to get AP info for RSSI");
+            params.wifi_rssi = -100; // Default bad RSSI
+        } else {
+            params.wifi_rssi = ap_info.rssi;
+            ESP_LOGI("HEALTH_CHECK", "WiFi RSSI (dBm): %d", params.wifi_rssi);
+        }
+
+        /* Publishing to topic */
+        publish_health_check_params(&params);
     }
 }
 
@@ -345,4 +407,5 @@ void app_main(void)
     xTaskCreate(sht3x_task, "SHT3X TASK", TASK_SHT3X_STACK_SIZE, NULL, 5, NULL);
 
     // xTaskCreate(print_all_tasks, "TASK_LIST", 2048, NULL, 1, NULL);
+    xTaskCreate(health_check_task, "HEALTH_CHECK_TASK", 4096, NULL, 6, NULL);
 }

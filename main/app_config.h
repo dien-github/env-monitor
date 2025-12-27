@@ -37,4 +37,13 @@ typedef struct {
     } value;
 } app_cmd_t;
 
+/**
+ * Health check parameters structure
+ */
+typedef struct {
+    uint32_t uptime_ms;
+    size_t free_heap_bytes;
+    int8_t wifi_rssi;
+} health_check_params_t;
+
 #endif // APP_CONFIG_H

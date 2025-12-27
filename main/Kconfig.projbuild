@@ -36,4 +36,11 @@ menu "Project Configuration"
             default "room_01/status/connection"
     endmenu
 
+    menu "Health Check Configuration"
+        config HEALTH_CHECK_PERIOD_MS
+            int "Health Check Period (ms)"
+            default 60000
+            help
+                Period in milliseconds for performing health checks.
+    endmenu
 endmenu

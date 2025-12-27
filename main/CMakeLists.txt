@@ -8,6 +8,7 @@ idf_component_register(
         "service_wifi"
         "service_mqtt"
         "esp_timer"
+        "esp_wifi"
         "driver_relay"
         "esp_driver_gpio"
         "sht3x"
