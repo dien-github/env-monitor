@@ -97,6 +97,20 @@
             box-shadow: 0 0 8px rgba(40, 167, 69, 0.6);
         }
         
+        /* Controls disabled state */
+        .card-disabled {
+            opacity: 0.6;
+        }
+        .controls-disabled {
+            pointer-events: none;
+        }
+        .offline-notice {
+            display: none;
+        }
+        .offline-notice.show {
+            display: block;
+        }
+        
         /* WiFi Signal Bars */
         .wifi-bars {
             position: fixed;
@@ -160,8 +174,11 @@
             </div>
         </div>
 
-        <div class="card card-box p-4">
+        <div class="card card-box p-4 controls-card card-disabled controls-disabled" id="controlsCard">
             <h5 class="mb-3 border-bottom pb-2">Điều khiển</h5>
+            <div class="offline-notice alert alert-warning py-2 px-3" id="offlineNotice">
+                Mất kết nối – vui lòng kiểm tra Wi‑Fi/MQTT.
+            </div>
             
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div class="d-flex align-items-center">
@@ -169,7 +186,7 @@
                     <div class="device-indicator" id="humidifierIndicator"></div>
                 </div>
                 <label class="switch">
-                    <input type="checkbox" id="humidifierSwitch" onchange="toggleDevice('humidifier')">
+                    <input type="checkbox" id="humidifierSwitch" onchange="toggleDevice('humidifier')" disabled>
                     <span class="slider"></span>
                 </label>
             </div>
@@ -180,7 +197,7 @@
                     <div class="device-indicator" id="fanIndicator"></div>
                 </div>
                 <label class="switch">
-                    <input type="checkbox" id="fanSwitch" onchange="toggleDevice('fan')">
+                    <input type="checkbox" id="fanSwitch" onchange="toggleDevice('fan')" disabled>
                     <span class="slider"></span>
                 </label>
             </div>
@@ -215,6 +232,8 @@
         }
         
         // 2. Handle incoming messages
+        let isOnline = false;
+
         function handleMessage(data) {
             if (data.type === 'sensor') {
                 document.getElementById('temp').innerText = data.temperature.toFixed(2);
@@ -223,12 +242,15 @@
             else if (data.type === 'connection') {
                 let indicator = document.getElementById('connectionIndicator');
                 if (data.status === 'online') {
+                    isOnline = true;
                     indicator.classList.remove('offline');
                     indicator.classList.add('online');
                 } else {
+                    isOnline = false;
                     indicator.classList.remove('online');
                     indicator.classList.add('offline');
                 }
+                updateControlsAvailability();
             } 
             else if (data.type === 'device') {
                 let switchId = data.device === 'humidifier' ? 'humidifierSwitch' : 'fanSwitch';
@@ -247,6 +269,25 @@
             }
             else if (data.type === 'system') {
                 updateWifiBars(data.rssi);
+            }
+        }
+
+        function updateControlsAvailability() {
+            const card = document.getElementById('controlsCard');
+            const notice = document.getElementById('offlineNotice');
+            const humidSwitch = document.getElementById('humidifierSwitch');
+            const fanSwitch = document.getElementById('fanSwitch');
+
+            if (isOnline) {
+                card.classList.remove('card-disabled', 'controls-disabled');
+                notice.classList.remove('show');
+                humidSwitch.disabled = false;
+                fanSwitch.disabled = false;
+            } else {
+                card.classList.add('card-disabled', 'controls-disabled');
+                notice.classList.add('show');
+                humidSwitch.disabled = true;
+                fanSwitch.disabled = true;
             }
         }
 
@@ -276,6 +317,15 @@
         
         // 3. Toggle Device
         async function toggleDevice(deviceType) {
+            if (!isOnline) {
+                // Guard in case disabled attribute is bypassed
+                alert('Thiết bị offline – không thể gửi lệnh.');
+                // revert toggle visual
+                const switchId = deviceType === 'humidifier' ? 'humidifierSwitch' : 'fanSwitch';
+                const el = document.getElementById(switchId);
+                el.checked = !el.checked;
+                return;
+            }
             let switchId = deviceType === 'humidifier' ? 'humidifierSwitch' : 'fanSwitch';
             let switchElement = document.getElementById(switchId);
             let value = switchElement.checked ? 'on' : 'off';
