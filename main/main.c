@@ -152,7 +152,7 @@ void sht3x_task(void *pvParameters) {
         publish_sensor_data(temperature, humidity);
 
         UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
-        ESP_LOGI("SENSOR TASK", "Stack còn trống: %u bytes", high_water_mark);
+        ESP_LOGI("SENSOR TASK", "Stack high water mark: %u bytes", high_water_mark);
     }
 }
 
@@ -353,6 +353,9 @@ void health_check_task(void *pvParameters)
 
         /* Publishing to topic */
         publish_health_check_params(&params);
+
+        UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
+        ESP_LOGI("FAN_TASK", "Stack high water mark: %u bytes", high_water_mark);
     }
 }
 
