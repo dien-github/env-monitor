@@ -9,9 +9,99 @@
         body { background: #f0f2f5; padding-top: 30px; }
         .card-box { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         .val-display { font-size: 2.5rem; font-weight: 800; }
+        
+        /* Connection Status Indicator */
+        .connection-indicator {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #6c757d;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            transition: background-color 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .connection-indicator.online {
+            background-color: #28a745;
+            box-shadow: 0 0 15px rgba(40, 167, 69, 0.6);
+        }
+        
+        .connection-indicator.offline {
+            background-color: #dc3545;
+            box-shadow: 0 0 15px rgba(220, 53, 69, 0.6);
+        }
+        
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #28a745;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        
+        /* Device Status Indicator */
+        .device-indicator {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #dc3545;
+            box-shadow: 0 0 8px rgba(220, 53, 69, 0.6);
+            transition: background-color 0.3s ease;
+            margin-left: 8px;
+        }
+        
+        .device-indicator.on {
+            background-color: #28a745;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.6);
+        }
     </style>
 </head>
 <body>
+    <!-- Connection Status Indicator -->
+    <div class="connection-indicator offline" id="connectionIndicator" title="Connection Status"></div>
+    
     <div class="container" style="max-width: 600px;">
         <h3 class="text-center mb-4">🏠 Room 1 Controller</h3>
 
@@ -34,45 +124,111 @@
             <h5 class="mb-3 border-bottom pb-2">Điều khiển</h5>
             
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <label class="fw-bold">Humidifier (Relay)</label>
-                <div class="btn-group">
-                    <button class="btn btn-outline-success px-4" onclick="sendCommand('humidifier', 'on')">ON</button>
-                    <button class="btn btn-outline-secondary px-4" onclick="sendCommand('humidifier', 'off')">OFF</button>
+                <div class="d-flex align-items-center">
+                    <label class="fw-bold mb-0">Humidifier (Relay)</label>
+                    <div class="device-indicator" id="humidifierIndicator"></div>
                 </div>
+                <label class="switch">
+                    <input type="checkbox" id="humidifierSwitch" onchange="toggleDevice('humidifier')">
+                    <span class="slider"></span>
+                </label>
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <label class="fw-bold">Quạt (Fan)</label>
-                <div class="btn-group">
-                    <button class="btn btn-outline-success px-4" onclick="sendCommand('fan', 'on')">ON</button>
-                    <button class="btn btn-outline-secondary px-4" onclick="sendCommand('fan', 'off')">OFF</button>
+                <div class="d-flex align-items-center">
+                    <label class="fw-bold mb-0">Quạt (Fan)</label>
+                    <div class="device-indicator" id="fanIndicator"></div>
                 </div>
+                <label class="switch">
+                    <input type="checkbox" id="fanSwitch" onchange="toggleDevice('fan')">
+                    <span class="slider"></span>
+                </label>
             </div>
         </div>
     </div>
 
     <script>
-        // 1. Get Status (Interval)
-        async function updateStatus() {
-            try {
-                let res = await fetch('/api/status');
-                let data = await res.json();
-                document.getElementById('temp').innerText = data.temperature || "--";
-                document.getElementById('hum').innerText = data.humidity || "--";
-            } catch (e) { console.log(e); }
+        let ws = null;
+        
+        // 1. WebSocket Connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            
+            ws.onopen = function(event) {
+                console.log("WebSocket connected");
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+            
+            ws.onerror = function(error) {
+                console.error("WebSocket error:", error);
+            };
+            
+            ws.onclose = function(event) {
+                console.log("WebSocket closed, reconnecting in 3 seconds...");
+                setTimeout(connectWebSocket, 3000);
+            };
         }
-        setInterval(updateStatus, 2000);
-
-        // 2. Send Command
-        async function sendCommand(type, value) {
+        
+        // 2. Handle incoming messages
+        function handleMessage(data) {
+            if (data.type === 'sensor') {
+                document.getElementById('temp').innerText = data.temperature.toFixed(2);
+                document.getElementById('hum').innerText = data.humidity.toFixed(2);
+            } 
+            else if (data.type === 'connection') {
+                let indicator = document.getElementById('connectionIndicator');
+                if (data.status === 'online') {
+                    indicator.classList.remove('offline');
+                    indicator.classList.add('online');
+                } else {
+                    indicator.classList.remove('online');
+                    indicator.classList.add('offline');
+                }
+            } 
+            else if (data.type === 'device') {
+                let switchId = data.device === 'humidifier' ? 'humidifierSwitch' : 'fanSwitch';
+                let indicatorId = data.device === 'humidifier' ? 'humidifierIndicator' : 'fanIndicator';
+                
+                let switchElement = document.getElementById(switchId);
+                let indicatorElement = document.getElementById(indicatorId);
+                
+                switchElement.checked = (data.state === 'on');
+                
+                if (data.state === 'on') {
+                    indicatorElement.classList.add('on');
+                } else {
+                    indicatorElement.classList.remove('on');
+                }
+            }
+        }
+        
+        // 3. Toggle Device
+        async function toggleDevice(deviceType) {
+            let switchId = deviceType === 'humidifier' ? 'humidifierSwitch' : 'fanSwitch';
+            let switchElement = document.getElementById(switchId);
+            let value = switchElement.checked ? 'on' : 'off';
+            
             try {
                 await fetch('/api/command', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ type: type, value: value })
+                    body: JSON.stringify({ type: deviceType, value: value })
                 });
-            } catch (e) { alert("Lỗi gửi lệnh!"); }
+            } catch (e) { 
+                alert("Lỗi gửi lệnh!");
+                switchElement.checked = !switchElement.checked;
+            }
         }
+        
+        // 4. Connect WebSocket on page load
+        window.addEventListener('load', function() {
+            connectWebSocket();
+        });
     </script>
 </body>
 </html>
