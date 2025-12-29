@@ -34,7 +34,7 @@ esp_err_t app_controller_init(void)
     ESP_LOGI(TAG, "Command queue created successfully");
 
     // Create application controller task
-    esp_err_t ret = xTaskCreate(app_controller_task, "APP CTRL TASK", TASK_APPCTRL_STACK_SIZE, NULL, 5, NULL);
+    esp_err_t ret = xTaskCreate(app_controller_task, "APP CTRL TASK", TASK_APPCTRL_STACK_SIZE, NULL, 4, NULL);
     if (ret != pdPASS) {
         ESP_LOGE(TAG, "Failed to create application controller task");
         return ESP_FAIL;
@@ -61,14 +61,12 @@ bool app_controller_send_command(const char *json_str)
     app_cmd_t cmd = {0};
     bool result = false;
 
-    // 3. Parse JSON
     cJSON *json = cJSON_Parse(json_str);
     if (json == NULL) {
         ESP_LOGE(TAG, "Failed to parse JSON");
         return false;
     }
 
-    // 4. Lấy field "type" và "state"
     cJSON *type = cJSON_GetObjectItem(json, "type");
 
     if (type && type->valuestring)
@@ -117,7 +115,6 @@ bool app_controller_send_command(const char *json_str)
         ESP_LOGE(TAG, "Missing or invalid 'type' field in JSON");
     }
     
-    // 5. Dọn dẹp bộ nhớ (Luôn luôn gọi)
     cJSON_Delete(json);
     return result;
 }

@@ -38,11 +38,12 @@
 #define TOPIC_STATUS_DEVICE_PUB     "room_01/status/devices"
 #define TOPIC_ERROR_PUB             "room_01/errors"
 
-#define APP_TASK_STACK_SIZE     4096
-#define APP_TASK_PRIORITY       5
-#define SENSOR_TASK_STACK_SIZE  2048
-#define SENSOR_TASK_PRIORITY    4
-#define TASK_SHT3X_STACK_SIZE   3072    /* 3 bytes */
+#define APP_TASK_STACK_SIZE             4096
+#define APP_TASK_PRIORITY               5
+#define SENSOR_TASK_STACK_SIZE          2048
+#define SENSOR_TASK_PRIORITY            4
+#define TASK_SHT3X_STACK_SIZE           3072    /* 3 KB */
+#define TASK_HEALTH_CHECK_STACK_SIZE    3072    /* 3 KB */
 
 static TaskHandle_t humid_task_handle = NULL;
 static TaskHandle_t fan_task_handle = NULL;
@@ -355,7 +356,7 @@ void health_check_task(void *pvParameters)
         publish_health_check_params(&params);
 
         UBaseType_t high_water_mark = uxTaskGetStackHighWaterMark(NULL);
-        ESP_LOGI("FAN_TASK", "Stack high water mark: %u bytes", high_water_mark);
+        ESP_LOGI("HEALTH_CHECK", "Stack high water mark: %u bytes", high_water_mark);
     }
 }
 
@@ -407,8 +408,8 @@ void app_main(void)
 
     ESP_ERROR_CHECK(sht3x_init_i2c(CONFIG_SDA_PIN, CONFIG_SCL_PIN));
     ESP_LOGI(TAG, "I2C Initialized");
-    xTaskCreate(sht3x_task, "SHT3X TASK", TASK_SHT3X_STACK_SIZE, NULL, 5, NULL);
+    xTaskCreate(sht3x_task, "SHT3X TASK", TASK_SHT3X_STACK_SIZE, NULL, 3, NULL);
 
     // xTaskCreate(print_all_tasks, "TASK_LIST", 2048, NULL, 1, NULL);
-    xTaskCreate(health_check_task, "HEALTH_CHECK_TASK", 4096, NULL, 6, NULL);
+    xTaskCreate(health_check_task, "HEALTH_CHECK_TASK", TASK_HEALTH_CHECK_STACK_SIZE, NULL, 2, NULL);
 }
